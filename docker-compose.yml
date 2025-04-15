@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  fastapi:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8001:8001"  # Puerto local : Puerto del contenedor
+    volumes:
+      - ./app:/app
