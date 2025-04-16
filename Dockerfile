@@ -7,17 +7,14 @@ WORKDIR /app
 # Copia el archivo requirements.txt al contenedor
 COPY requirements.txt .
 
-# Instala las dependencias desde requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
 # Crea un entorno virtual dentro del contenedor
 RUN python -m venv /venv
 
-# Activa el entorno virtual y instala las dependencias dentro de él
+# Instala las dependencias dentro del entorno virtual
 RUN /venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # Copia todo el contenido de la carpeta app al contenedor
-COPY app /app
+COPY . /app
 
 # Expone el puerto 8000
 EXPOSE 8000
