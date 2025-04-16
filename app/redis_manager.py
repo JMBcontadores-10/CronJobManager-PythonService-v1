@@ -1,6 +1,6 @@
 import redis
 import json
-r = redis.Redis(host="172.22.82.26", port=6379, decode_responses=True)
+r = redis.Redis(host="172.22.82.26", port=6379, db=2, decode_responses=True)
 def save_cronjob(job_id: str, data: dict):
     r.set(f"cronjob:{job_id}", json.dumps(data))
 
@@ -14,3 +14,5 @@ def get_all_cronjobs():
 
 def delete_cronjob(job_id: str):
     r.delete(f"cronjob:{job_id}")
+def save_cronjob_response(job_id: str, response: str):
+    r.set(f"cronjob_response:{job_id}", response)

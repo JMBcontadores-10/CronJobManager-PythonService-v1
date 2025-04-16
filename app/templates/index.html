@@ -1,4 +1,3 @@
-<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="es">
   <head>
@@ -44,6 +43,9 @@
     <h2>Lista de CronJobs</h2>
     <ul id="jobList"></ul>
 
+    <h2>Respuestas</h2>
+    <div id="responseContainer"></div>
+
     <script>
       const apiURL = "http://172.22.82.26:8005";
 
@@ -79,28 +81,51 @@
         });
 
       async function loadJobs() {
-        const res = await fetch(`${apiURL}/cronjob/`);
-        const jobs = await res.json();
-        const list = document.getElementById("jobList");
-        list.innerHTML = "";
-        jobs.forEach((job) => {
-          const li = document.createElement("li");
-          li.innerHTML = `
-                    <strong>${job.name}</strong> - ${
-            JSON.parse(job.script_path).url
-          } (${JSON.parse(job.script_path).method}) 
-                    cada ${job.interval_seconds}s 
+        try {
+          const response = await fetch(`${apiURL}/cronjob/`);
+          // Verificar que la respuesta sea JSON
+          const data = await response.json();
+
+          // Si el backend te devuelve una lista de cronjobs, deberías procesarla aquí
+          if (Array.isArray(data)) {
+            const jobList = document.getElementById("jobList");
+            jobList.innerHTML = ""; // Limpiar la lista antes de agregar nuevos datos
+
+            data.forEach((job) => {
+              const listItem = document.createElement("li");
+              listItem.innerHTML = `
+                    <strong>${job.name}</strong> (Intervalo: ${job.interval_seconds} segundos)
+                    <br>URL: ${job.script_path.url}
+                    <br>Método: ${job.script_path.method}
+                    <br>
                     <button onclick="runNow('${job.id}')">Ejecutar</button>
+
                     <button onclick="deleteJob('${job.id}')">Eliminar</button>
-                `;
-          list.appendChild(li);
-        });
+                  `;
+              jobList.appendChild(listItem);
+            });
+          } else {
+            console.error(
+              "Error: La respuesta no es un array válido de cronjobs"
+            );
+          }
+        } catch (error) {
+          console.error("Error al cargar los cronjobs: ", error);
+        }
       }
 
       async function runNow(id) {
         const res = await fetch(`${apiURL}/run/${id}`);
         const data = await res.json();
         alert(data.message);
+
+        // Mostrar la respuesta de la ejecución en el contenedor de respuestas
+        const responseContainer = document.getElementById("responseContainer");
+        responseContainer.innerHTML = `
+          <h3>Respuesta del CronJob:</h3>
+          <p><strong>${data.message}</strong></p>
+          <pre>${JSON.stringify(data.response, null, 2)}</pre>
+        `;
       }
 
       async function deleteJob(id) {
