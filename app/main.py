@@ -11,7 +11,7 @@ app = FastAPI()
 # Crear el modelo para los datos de CronJob
 class CronJob(BaseModel):
     name: str
-    script_path: Dict[str, str]  # Asegúrate de que esto sea un diccionario
+    script_path: Dict[str, str]  # Debería ser un diccionario con una clave "url"
     interval_seconds: int
 
 app = FastAPI()
@@ -32,16 +32,20 @@ def startup_event():
 # Cambiar la función para aceptar un objeto CronJob
 @app.post("/cronjob/")
 def create_cronjob(cronjob: CronJob):
-    job_id = str(uuid4())
-    job = {
-        "id": job_id,
-        "name": cronjob.name,
-        "script_path": cronjob.script_path,
-        "interval_seconds": cronjob.interval_seconds
-    }
-    redis_manager.save_cronjob(job_id, job)
-    scheduler.add_cronjob_to_scheduler(job_id, cronjob.script_path["url"], cronjob.interval_seconds)
-    return job
+    try:
+        print(cronjob)  # Esto muestra el contenido del objeto CronJob recibido
+        job_id = str(uuid4())
+        job = {
+            "id": job_id,
+            "name": cronjob.name,
+            "script_path": cronjob.script_path,
+            "interval_seconds": cronjob.interval_seconds
+        }
+        redis_manager.save_cronjob(job_id, job)
+        scheduler.add_cronjob_to_scheduler(job_id, cronjob.script_path["url"], cronjob.interval_seconds)
+        return job
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=f"Error de validación: {str(e)}")
 
 @app.get("/cronjob/")
 def list_jobs():
@@ -56,16 +60,16 @@ def run_now(job_id: str):
     try:
         response = scheduler.run_script(job["script_path"]["url"])
         if response is None:
-            response = "No output from the script"
+            response = {"message": "No output from the script"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al ejecutar el script: {str(e)}")
 
     # Verifica que la respuesta no sea None
-    if response is not None:
+    if response and response != "No output from the script":
         redis_manager.save_cronjob_response(job_id, response)
     else:
-        raise HTTPException(status_code=500, detail="La respuesta del cronjob es inválida.")
-    
+        response = {"message": "No output from the script"}
+
     return {"message": f"{job['name']} ejecutado manualmente", "response": response}
 
 # En el script del cronjob

@@ -86,7 +86,7 @@
           },
           body: JSON.stringify({
             name: name,
-            script_path: JSON.stringify({ url: full_url, method }),
+            script_path: { url: full_url, method },  // Aquí se envía como un objeto
             interval_seconds,
           }),
         });
@@ -138,12 +138,22 @@
       alert(data.message);
 
       const responseContainer = document.getElementById("responseContainer");
-      responseContainer.innerHTML = `
+
+      // Verifica si la respuesta tiene datos
+      if (data.response && data.response !== "No output from the script") {
+        responseContainer.innerHTML = `
           <h5 class="text-success">Respuesta del CronJob:</h5>
           <p><strong>${data.message}</strong></p>
           <pre class="bg-dark text-white p-2 rounded">${JSON.stringify(data.response, null, 2)}</pre>
         `;
+      } else {
+        responseContainer.innerHTML = `
+          <h5 class="text-warning">Respuesta del CronJob:</h5>
+          <p>No se generó salida desde el script ejecutado.</p>
+        `;
+      }
     }
+
 
     async function deleteJob(id) {
       const res = await fetch(`${apiURL}/cronjob/${id}`, {
