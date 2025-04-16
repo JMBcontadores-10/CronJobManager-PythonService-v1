@@ -76,3 +76,7 @@ def delete_job(job_id: str):
     scheduler.scheduler.remove_job(job_id)
     redis_manager.delete_cronjob(job_id)
     return {"message": "Eliminado"}
+
+@app.get("/cronjob/{job_id}/responses")
+def get_cronjob_responses(job_id: str):
+    return redis_manager.get_cronjob_responses(job_id)

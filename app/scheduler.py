@@ -3,22 +3,37 @@ from apscheduler.triggers.interval import IntervalTrigger
 import json
 import httpx
 from datetime import datetime
-from redis_manager import get_cronjob, r
+from redis_manager import get_cronjob, r as redis_conn
 import asyncio
 
 scheduler = BackgroundScheduler()
 
 def run_script(script_path):
     asyncio.run(run_async_script(script_path))  # Ejecuta el job como coroutine
-def run_script(script_path):
-    asyncio.run(run_async_script(script_path))  # Ejecuta el job como coroutine
+
 async def run_async_script(script_path):
+    print(f"[CronManager] Ejecutando script_path: {script_path}")
     try:
-        data = json.loads(script_path)  # Suponiendo que el script_path es un JSON
+        if isinstance(script_path, str):
+            try:
+                # Intenta parsear como JSON
+                data = json.loads(script_path)
+            except json.JSONDecodeError:
+                print("[CronManager] script_path no es JSON, tratando como URL directa.")
+                # Asume que el string es una URL simple
+                data = {
+                    "url": script_path,
+                    "method": "GET",
+                    "job_id": "unknown"
+                }
+        else:
+            data = script_path
+
+        print(f"[CronManager] script_path procesado: {data} ({type(data)})")
+
         url = data["url"]
         method = data.get("method", "GET").upper()
 
-        # Imprime la URL y el método antes de ejecutar la solicitud
         print(f"[CronManager] Ejecutando: {method} {url}")
 
         async with httpx.AsyncClient() as client:
@@ -29,23 +44,20 @@ async def run_async_script(script_path):
                 print(f"[CronManager] Realizando GET a la URL: {url}")
                 res = await client.get(url)
 
-        # Verifica si la respuesta está vacía
         if not res.text.strip():
             raise ValueError("Respuesta vacía del servidor")
 
-        # Verifica si la respuesta es JSON
         if 'application/json' in res.headers.get('Content-Type', ''):
             try:
-                response_data = res.json()  # Intenta parsear la respuesta como JSON
+                response_data = res.json()
             except ValueError:
                 raise ValueError(f"Respuesta no válida JSON: {res.text}")
         else:
-            # Si la respuesta no es JSON, pero es HTML, la manejamos como texto
             response_data = {
                 "url": url,
                 "method": method,
                 "status_code": res.status_code,
-                "response_text": res.text,  # Almacena el contenido HTML completo
+                "response_text": res.text,
                 "content_type": res.headers.get('Content-Type', 'unknown'),
                 "timestamp": datetime.now().isoformat()
             }
@@ -57,6 +69,7 @@ async def run_async_script(script_path):
 
     except Exception as e:
         print(f"[CronManager] Error al ejecutar el job: {e}")
+
 
 def add_cronjob_to_scheduler(job_id, script_path, interval_seconds):
     scheduler.add_job(
