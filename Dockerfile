@@ -1,29 +1,26 @@
-# Usar una imagen base ligera de Python
-FROM python:3.12-slim
+# Usa una imagen base de Python
+FROM python:3.11-slim
 
-# Establecer directorio de trabajo
+# Establece el directorio de trabajo en /app
 WORKDIR /app
 
-# Instalar virtualenv
-RUN pip install --no-cache-dir virtualenv
-
-# Crear un entorno virtual fuera del código
-RUN python -m venv /venv
-
-# Actualizar pip del entorno virtual
-RUN /venv/bin/pip install --upgrade pip
-
-# Copiar requerimientos
+# Copia el archivo requirements.txt al contenedor
 COPY requirements.txt .
 
-# Instalar dependencias en el venv
+# Instala las dependencias desde requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Crea un entorno virtual dentro del contenedor
+RUN python -m venv /venv
+
+# Activa el entorno virtual y instala las dependencias dentro de él
 RUN /venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Copiar el código fuente
-COPY ./app /app
+# Copia todo el contenido de la carpeta app al contenedor
+COPY app /app
 
-# Exponer el nuevo puerto de FastAPI
-EXPOSE 8001
+# Expone el puerto 8000
+EXPOSE 8000
 
-# Usar el entorno virtual para ejecutar Uvicorn en puerto 8001
-CMD ["/venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--reload", "--reload-dir", "/app"]
+# Define el comando para ejecutar la aplicación FastAPI con Uvicorn usando el entorno virtual
+CMD ["/venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app"]

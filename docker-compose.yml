@@ -1,11 +1,14 @@
 version: "3.9"
 
 services:
-  fastapi:
-    build: .
-    env_file:
-      - .env
+  cronmanager:
+    build:
+      context: .
+      network: host  # Usar la red del host
     ports:
-      - "8001:8001"  # Puerto local : Puerto del contenedor
+      - "8005:8000"
     volumes:
       - ./app:/app
+    command: /bin/bash -c "source /venv/bin/activate && /venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app"
+   
+
