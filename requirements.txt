@@ -8,3 +8,5 @@ openpyxl
 reportlab
 pyjwt
 redis
+apscheduler
+httpx

@@ -1,0 +1,118 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>CronManager</title>
+  </head>
+  <body>
+    <h1>CronManager</h1>
+
+    <h2>Crear nuevo CronJob</h2>
+    <form id="cronForm">
+      <label>Nombre:</label><br />
+      <input type="text" id="name" required /><br /><br />
+
+      <label>IP del destino:</label><br />
+      <input
+        type="text"
+        id="ip"
+        placeholder="Ej: http://172.22.82.26:8005"
+        required
+      /><br /><br />
+
+      <label>Endpoint:</label><br />
+      <input
+        type="text"
+        id="endpoint"
+        placeholder="/mi-endpoint"
+        required
+      /><br /><br />
+
+      <label>Método:</label><br />
+      <select id="method">
+        <option value="GET">GET</option>
+        <option value="POST">POST</option></select
+      ><br /><br />
+
+      <label>Intervalo en segundos:</label><br />
+      <input type="number" id="interval_seconds" required /><br /><br />
+
+      <button type="submit">Crear</button>
+    </form>
+
+    <h2>Lista de CronJobs</h2>
+    <ul id="jobList"></ul>
+
+    <script>
+      const apiURL = "http://172.22.82.26:8005";
+
+      document
+        .getElementById("cronForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const name = document.getElementById("name").value;
+          const ip = document.getElementById("ip").value;
+          const endpoint = document.getElementById("endpoint").value;
+          const method = document.getElementById("method").value;
+          const interval_seconds = parseInt(
+            document.getElementById("interval_seconds").value
+          );
+          const full_url = `${ip}${endpoint}`;
+
+          const response = await fetch(`${apiURL}/cronjob/`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: name,
+              script_path: JSON.stringify({ url: full_url, method }),
+              interval_seconds,
+            }),
+          });
+
+          const data = await response.json();
+          alert("Cronjob creado: " + JSON.stringify(data));
+          loadJobs();
+        });
+
+      async function loadJobs() {
+        const res = await fetch(`${apiURL}/cronjob/`);
+        const jobs = await res.json();
+        const list = document.getElementById("jobList");
+        list.innerHTML = "";
+        jobs.forEach((job) => {
+          const li = document.createElement("li");
+          li.innerHTML = `
+                    <strong>${job.name}</strong> - ${
+            JSON.parse(job.script_path).url
+          } (${JSON.parse(job.script_path).method}) 
+                    cada ${job.interval_seconds}s 
+                    <button onclick="runNow('${job.id}')">Ejecutar</button>
+                    <button onclick="deleteJob('${job.id}')">Eliminar</button>
+                `;
+          list.appendChild(li);
+        });
+      }
+
+      async function runNow(id) {
+        const res = await fetch(`${apiURL}/run/${id}`);
+        const data = await res.json();
+        alert(data.message);
+      }
+
+      async function deleteJob(id) {
+        const res = await fetch(`${apiURL}/cronjob/${id}`, {
+          method: "DELETE",
+        });
+        const data = await res.json();
+        alert(data.message);
+        loadJobs();
+      }
+
+      loadJobs();
+    </script>
+  </body>
+</html>
