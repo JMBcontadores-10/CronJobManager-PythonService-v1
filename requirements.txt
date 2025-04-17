@@ -10,3 +10,4 @@ pyjwt
 redis
 apscheduler
 httpx
+aiomysql
