@@ -5,7 +5,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Dict
+from config import start_redis
+
+
+
 app = FastAPI()
+
 
 
 # Crear el modelo para los datos de CronJob
@@ -15,6 +20,29 @@ class CronJob(BaseModel):
     interval_seconds: int
 
 app = FastAPI()
+
+### al iniciar la app nos conectamos a redis y cargamos los jobs
+@app.on_event("startup")
+async def startup_event():
+    global redis_conn
+    redis_conn = await start_redis()
+    if not redis_conn:
+        print("[Startup] No se pudo conectar a Redis. Continuando sin conexión.")
+    redis_manager.connect_to_redis()
+    print("[CronManager] Cargando trabajos desde Redis...")
+    scheduler.load_jobs_from_redis()
+    print("[CronManager] Iniciando el scheduler...")
+    if not scheduler.scheduler.running:
+       
+        print("[CronManager] Listo.")
+        
+@app.get("/status")
+def status():
+    try:
+        redis_manager.r.ping()
+        return {"status": "ok", "redis": "connected"}
+    except:
+        return {"status": "ok", "redis": "not connected"}
 
 @app.get("/")
 def read_root():
