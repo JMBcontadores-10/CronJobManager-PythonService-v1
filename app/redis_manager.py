@@ -1,6 +1,15 @@
 import redis
 import json
 r = redis.Redis(host="172.22.82.26", port=6379, db=2, decode_responses=True)
+
+def connect_to_redis():
+    global r
+    try:
+        r.ping()
+        print("[Redis] Conexión exitosa.")
+    except redis.exceptions.ConnectionError as e:
+        print(f"[Redis] Error de conexión: {e}")
+        raise e
 def save_cronjob(job_id: str, data: dict):
     r.set(f"cronjob:{job_id}", json.dumps(data))
 
