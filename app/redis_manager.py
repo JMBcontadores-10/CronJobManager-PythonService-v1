@@ -11,16 +11,31 @@ def connect_to_redis():
         print(f"[Redis] Error de conexión: {e}")
         raise e
 def save_cronjob(job_id: str, data: dict):
-    data["paused"] = data.get("paused", False)  # default: no está pausado
+    data["paused"] = data.get("paused", False)  # Default: no está pausado
     r.set(f"cronjob:{job_id}", json.dumps(data))
 
 def get_cronjob(job_id: str):
     data = r.get(f"cronjob:{job_id}")
-    return json.loads(data) if data else None
+    job = json.loads(data) if data else None
+    if job is None:
+        print(f"[CronManager] Job con ID {job_id} no encontrado.")
+    else:
+        if 'paused' not in job:
+            job['paused'] = False  # Asignar el valor por defecto si no existe
+        print(f"[CronManager] Job cargado: {job}")
+    return job
 
 def get_all_cronjobs():
     keys = r.keys("cronjob:*")
-    return [json.loads(r.get(k)) for k in keys]
+    jobs = []
+    for k in keys:
+        data = r.get(k)
+        job = json.loads(data)
+        if 'paused' not in job:
+            job['paused'] = False  # Valor por defecto si no existe
+        jobs.append(job)
+    return jobs
+
 
 def delete_cronjob(job_id: str):
     r.delete(f"cronjob:{job_id}")
@@ -49,6 +64,8 @@ def get_cronjob_responses(job_id):
 
 def update_cronjob_status(job_id: str, paused: bool):
     job = get_cronjob(job_id)
-    if job:
+    if job is not None:
         job["paused"] = paused
         save_cronjob(job_id, job)
+    else:
+        print(f"[CronManager] El trabajo con ID {job_id} no existe en Redis.")

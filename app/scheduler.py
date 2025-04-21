@@ -18,6 +18,7 @@ async def run_async_script(script_path):
             try:
                 # Intenta parsear como JSON
                 data = json.loads(script_path)
+                print(f"[CronManager] script_path es JSON: {data}")
             except json.JSONDecodeError:
                 print("[CronManager] script_path no es JSON, tratando como URL directa.")
                 # Asume que el string es una URL simple
