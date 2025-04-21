@@ -123,6 +123,7 @@ def get_cronjob_responses(job_id: str):
 def pause_job(job_id: str):
     try:
         scheduler.scheduler.pause_job(job_id)
+        redis_manager.update_cronjob_status(job_id, True)
         return {"message": f"Job {job_id} pausado"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"No se pudo pausar el job: {str(e)}")
@@ -131,6 +132,7 @@ def pause_job(job_id: str):
 def resume_job(job_id: str):
     try:
         scheduler.scheduler.resume_job(job_id)
+        redis_manager.update_cronjob_status(job_id, False)
         return {"message": f"Job {job_id} reanudado"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"No se pudo reanudar el job: {str(e)}")
