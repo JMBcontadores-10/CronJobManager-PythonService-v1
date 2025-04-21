@@ -41,21 +41,15 @@ def get_all_cronjobs():
 def delete_cronjob(job_id: str):
     r.delete(f"cronjob:{job_id}")
 
-def save_cronjob_response(job_id: str, response: str):
-    r.set(f"cronjob_response:{job_id}", response)
-
-def get_cronjob_responses(job_id):
-    response_keys = r.smembers(f"cronjob_responses:{job_id}")
-    responses = []
-    for key in sorted(response_keys):
-        data = r.get(key)
-        try:
-            data_json = json.loads(data)
-        except Exception:
-            data_json = data  # Si no es JSON válido, lo dejamos como texto
-        timestamp = key.split(":")[-1]
-        responses.append({"timestamp": timestamp, "response": data_json})
-    return responses
+def save_cronjob_response(job_id, response):
+    try:
+        # Convertir la respuesta a JSON
+        response_json = json.dumps(response)
+        # Guardar la respuesta en Redis con un timestamp único
+        timestamp = datetime.now().isoformat()  # O cualquier otra forma de obtener un timestamp
+        r.set(f"cronjob_response:{job_id}:{timestamp}", response_json)
+    except Exception as e:
+        print(f"Error guardando respuesta: {e}")
 
 def update_cronjob_status(job_id: str, paused: bool):
     job = get_cronjob(job_id)
