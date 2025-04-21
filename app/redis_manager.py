@@ -11,6 +11,7 @@ def connect_to_redis():
         print(f"[Redis] Error de conexión: {e}")
         raise e
 def save_cronjob(job_id: str, data: dict):
+    data["paused"] = data.get("paused", False)  # default: no está pausado
     r.set(f"cronjob:{job_id}", json.dumps(data))
 
 def get_cronjob(job_id: str):
@@ -44,3 +45,10 @@ def get_cronjob_responses(job_id):
             "response": data_json
         })
     return responses
+
+
+def update_cronjob_status(job_id: str, paused: bool):
+    job = get_cronjob(job_id)
+    if job:
+        job["paused"] = paused
+        save_cronjob(job_id, job)
