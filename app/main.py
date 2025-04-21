@@ -6,12 +6,21 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Dict
 from config import start_redis
-
+from fastapi.middleware.cors import CORSMiddleware
 
 
 app = FastAPI()
 
+# Lista de orígenes permitidos (agrega los que necesites)
 
+# Agregar el middleware de CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],            # Orígenes permitidos
+    allow_credentials=True,
+    allow_methods=["*"],              # Métodos permitidos (GET, POST, etc.)
+    allow_headers=["*"],              # Headers permitidos
+)
 
 # Crear el modelo para los datos de CronJob
 class CronJob(BaseModel):
@@ -33,9 +42,9 @@ async def startup_event():
     scheduler.load_jobs_from_redis()
     print("[CronManager] Iniciando el scheduler...")
     if not scheduler.scheduler.running:
-       
+        scheduler.start()
         print("[CronManager] Listo.")
-        
+
 @app.get("/status")
 def status():
     try:
@@ -52,10 +61,7 @@ def read_root():
 def mostrar_vista():
     return FileResponse("templates/index.html")
 
-@app.on_event("startup")
-def startup_event():
-    scheduler.load_jobs_from_redis()
-    scheduler.start()
+
 
 # Cambiar la función para aceptar un objeto CronJob
 @app.post("/cronjob/")
@@ -112,3 +118,19 @@ def delete_job(job_id: str):
 @app.get("/cronjob/{job_id}/responses")
 def get_cronjob_responses(job_id: str):
     return redis_manager.get_cronjob_responses(job_id)
+
+@app.post("/cronjob/{job_id}/pause")
+def pause_job(job_id: str):
+    try:
+        scheduler.scheduler.pause_job(job_id)
+        return {"message": f"Job {job_id} pausado"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo pausar el job: {str(e)}")
+
+@app.post("/cronjob/{job_id}/resume")
+def resume_job(job_id: str):
+    try:
+        scheduler.scheduler.resume_job(job_id)
+        return {"message": f"Job {job_id} reanudado"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo reanudar el job: {str(e)}")
