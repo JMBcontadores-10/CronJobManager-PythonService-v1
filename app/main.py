@@ -13,10 +13,10 @@ app = FastAPI()
 # Lista de orígenes permitidos (agrega los que necesites)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],            # Orígenes permitidos
+    allow_origins=["*"],  # Orígenes permitidos
     allow_credentials=True,
-    allow_methods=["*"],              # Métodos permitidos (GET, POST, etc.)
-    allow_headers=["*"],              # Headers permitidos
+    allow_methods=["*"],  # Métodos permitidos (GET, POST, etc.)
+    allow_headers=["*"],  # Headers permitidos
 )
 
 # Crear el modelo para los datos de CronJob
@@ -29,13 +29,16 @@ class CronJob(BaseModel):
     def toggle(self):
         self.paused = not self.paused
         self.is_active = not self.paused  # Si está pausado, no está activo
+
 # Evento de startup para conectar a Redis y cargar los trabajos
 @app.on_event("startup")
 async def startup_event():
     global redis_conn
-    redis_conn = await start_redis()
+    redis_conn = await start_redis()  # Espera hasta que Redis esté disponible
     if not redis_conn:
         print("[Startup] No se pudo conectar a Redis. Continuando sin conexión.")
+        return  # Si no hay conexión a Redis, termina el evento de inicio
+
     redis_manager.connect_to_redis()
 
     print("[CronManager] Cargando trabajos desde Redis...")
@@ -43,14 +46,20 @@ async def startup_event():
     for job in jobs:
         if 'paused' not in job:
             job['paused'] = False
-            redis_manager.save_cronjob(job['id'], job)
+        if job['paused']:
+            try:
+                scheduler.scheduler.pause_job(job['id'])  # Intentar pausar el trabajo
+            except JobLookupError:
+                print(f"[CronManager] No se encontró el trabajo con id {job['id']} para pausar.")
+        redis_manager.save_cronjob(job['id'], job)  # Guardar el estado actualizado
 
+    # Cargar los trabajos al scheduler después de haber verificado que todos estén pausados si es necesario
     scheduler.load_jobs_from_redis()
+
     print("[CronManager] Iniciando el scheduler...")
     if not scheduler.scheduler.running:
         scheduler.start()
         print("[CronManager] Listo.")
-
 
 @app.get("/status")
 def status():
@@ -67,27 +76,15 @@ def read_root():
 @app.get("/vista")
 def mostrar_vista():
     return FileResponse("templates/index.html")
+
 @app.get("/cronjob/")
 def list_jobs():
-    return redis_manager.get_all_cronjobs()
-# Crear un nuevo cronjob
-@app.post("/cronjob/")
-def create_cronjob(cronjob: CronJob):
-    try:
-        print(cronjob)  # Muestra el contenido del objeto CronJob recibido
-        job_id = str(uuid4())
-        job = {
-            "id": job_id,
-            "name": cronjob.name,
-            "script_path": cronjob.script_path,
-            "interval_seconds": cronjob.interval_seconds
-        }
-        redis_manager.save_cronjob(job_id, job)
-        scheduler.add_cronjob_to_scheduler(job_id, cronjob.script_path["url"], cronjob.interval_seconds)
-        return job
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=f"Error de validación: {str(e)}")
+    jobs = redis_manager.get_all_cronjobs()
+    for job in jobs:
+        job['is_active'] = not job.get("paused", False)  # Si está pausado, no está activo
+    return jobs
 
+# Crear un nuevo cronjob
 @app.post("/cronjob/")
 def create_cronjob(cronjob: CronJob):
     try:
@@ -98,7 +95,7 @@ def create_cronjob(cronjob: CronJob):
             "name": cronjob.name,
             "script_path": cronjob.script_path,
             "interval_seconds": cronjob.interval_seconds,
-            "paused": cronjob.paused  # ← asegúrate de incluirlo aquí
+            "paused": cronjob.paused
         }
         redis_manager.save_cronjob(job_id, job)
         if not cronjob.paused:
@@ -106,7 +103,6 @@ def create_cronjob(cronjob: CronJob):
         return job
     except ValueError as e:
         raise HTTPException(status_code=422, detail=f"Error de validación: {str(e)}")
-
 
 @app.get("/run/{job_id}")
 def run_now(job_id: str):
@@ -132,9 +128,17 @@ def run_now(job_id: str):
 # Eliminar un cronjob
 @app.delete("/cronjob/{job_id}")
 def delete_job(job_id: str):
-    scheduler.scheduler.remove_job(job_id)
+    # Primero, eliminamos el cronjob de Redis
     redis_manager.delete_cronjob(job_id)
-    return {"message": "Eliminado"}
+    
+    # Luego, verificamos si el trabajo existe en el scheduler antes de intentar eliminarlo
+    job = scheduler.scheduler.get_job(job_id)
+    if job:
+        scheduler.scheduler.remove_job(job_id)
+        return {"message": "Cronjob eliminado con éxito"}
+    else:
+        # Si el cronjob no existe, simplemente devolvemos un mensaje indicando que no se encontró
+        return {"message": "Cronjob no encontrado, no se realizó ninguna acción"}
 
 @app.get("/cronjob/{job_id}/responses")
 def get_cronjob_responses(job_id: str):
@@ -159,15 +163,32 @@ def resume_job(job_id: str):
         return {"message": f"Job {job_id} reanudado"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"No se pudo reanudar el job: {str(e)}")
+
+
 @app.post("/cronjob/{job_id}/toggle")
-async def toggle_job(job_id: str):
-    job = redis_manager.get_cronjob(job_id)  # Utiliza get_cronjob en lugar de get_job_by_id
+def toggle_job(job_id: str):
+    try:
+        # Intentamos obtener el cronjob desde Redis
+        job = redis_manager.get_cronjob(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} no encontrado en Redis")
 
-    if job:
-        # Cambiar el estado de "paused"
-        new_status = not job["paused"]
-        redis_manager.update_cronjob_status(job_id, new_status)  # Usa la función para actualizar el estado
+        # Verificamos si el job está en el scheduler antes de intentar pausarlo
+        existing_job = scheduler.scheduler.get_job(job_id)
+        if not existing_job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} no encontrado en el scheduler")
 
-        return {"message": f"CronJob {job_id} {'pausado' if new_status else 'reanudad'}"}
-    else:
-        raise HTTPException(status_code=404, detail="CronJob no encontrado")
+        # Alternamos el estado de "paused"
+        new_state = not job["paused"]
+        job["paused"] = new_state
+        redis_manager.update_cronjob_status(job_id, new_state)
+
+        # Intentamos pausar o reanudar el trabajo en el scheduler
+        if new_state:
+            scheduler.scheduler.pause_job(job_id)
+        else:
+            scheduler.scheduler.resume_job(job_id)
+
+        return {"message": f"Job {job_id} {'pausado' if new_state else 'reanudado'}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al alternar el estado del cronjob: {str(e)}")
