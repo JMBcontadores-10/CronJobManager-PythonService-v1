@@ -51,10 +51,18 @@ async def startup_event():
     # Cargar los trabajos al scheduler después de haber verificado que todos estén pausados si es necesario
     scheduler.load_jobs_from_redis()
 
-    print("[CronManager] Iniciando el scheduler...")
+    print("[CronManager] Verificando estado del scheduler...")
     if not scheduler.scheduler.running:
+        print("[CronManager] Iniciando el scheduler...")
         scheduler.start()
-        print("[CronManager] Listo.")
+        print("[CronManager] Scheduler iniciado correctamente.")
+    else:
+        print("[CronManager] El scheduler ya está en ejecución.")
+    
+    # Verificar que los trabajos se hayan cargado correctamente
+    job_count = len(scheduler.scheduler.get_jobs())
+    print(f"[CronManager] Total de trabajos activos en el scheduler: {job_count}")
+    print("[CronManager] Listo.")
 
 @app.get("/status")
 def status():
@@ -83,7 +91,7 @@ def list_jobs():
 @app.post("/cronjob/")
 def create_cronjob(cronjob: CronJob):
     try:
-        print(cronjob)
+        print(f"[CronManager] Creando nuevo cronjob: {cronjob.name}")
         job_id = str(uuid4())
         job = {
             "id": job_id,
@@ -94,14 +102,21 @@ def create_cronjob(cronjob: CronJob):
         }
         redis_manager.save_cronjob(job_id, job)
         
-        # Aquí está el cambio principal: pasar script_path completo, no solo la URL
+        # Si el trabajo no está pausado, añadirlo al scheduler
         if not cronjob.paused:
+            print(f"[CronManager] Añadiendo job {job_id} al scheduler (no está pausado)")
             scheduler.add_cronjob_to_scheduler(job_id, cronjob.script_path, cronjob.interval_seconds)
+        else:
+            print(f"[CronManager] Job {job_id} está pausado, no se añade al scheduler")
         
         return job
     except ValueError as e:
+        print(f"[CronManager] Error al crear cronjob: {str(e)}")
         raise HTTPException(status_code=422, detail=f"Error de validación: {str(e)}")
-
+    except Exception as e:
+        print(f"[CronManager] Error inesperado al crear cronjob: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
+    
 @app.get("/run/{job_id}")
 def run_now(job_id: str):
     job = redis_manager.get_cronjob(job_id)

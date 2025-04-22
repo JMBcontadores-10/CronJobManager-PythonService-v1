@@ -95,6 +95,17 @@ def add_cronjob_to_scheduler(job_id, script_path, interval_seconds):
     
     print(f"[CronManager] Añadiendo job {job_id} al scheduler con interval={interval_seconds}s")
     
+    # Asegúrate de que el scheduler está inicializado y funcionando
+    if not scheduler.running:
+        print("[CronManager] Iniciando scheduler porque no estaba ejecutándose")
+        scheduler.start()
+    
+    # Eliminar el job anterior si existe
+    if scheduler.get_job(job_id):
+        scheduler.remove_job(job_id)
+        print(f"[CronManager] Job anterior con ID {job_id} eliminado para reemplazarlo")
+    
+    # Añadir el job con el intervalo especificado
     scheduler.add_job(
         run_script,
         trigger=IntervalTrigger(seconds=interval_seconds),
@@ -107,9 +118,10 @@ def add_cronjob_to_scheduler(job_id, script_path, interval_seconds):
     job = scheduler.get_job(job_id)
     if job:
         print(f"[CronManager] Job {job_id} añadido correctamente al scheduler")
+        print(f"[CronManager] Próxima ejecución: {job.next_run_time}")
     else:
         print(f"[CronManager] Error: No se pudo añadir el job {job_id} al scheduler")
-
+        
 def load_jobs_from_redis():
     from redis_manager import get_all_cronjobs
     jobs = get_all_cronjobs()
