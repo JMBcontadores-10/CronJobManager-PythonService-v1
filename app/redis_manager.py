@@ -1,8 +1,10 @@
 import redis
 import json
+
 from datetime import datetime
 
-r = redis.Redis(host="172.22.82.26", port=6379, db=2, decode_responses=True)
+r = redis.Redis(host="172.18.203.157", port=6379, db=2, decode_responses=True)
+
 
 def connect_to_redis():
     global r

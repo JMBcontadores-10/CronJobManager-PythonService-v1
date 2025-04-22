@@ -44,7 +44,7 @@ ENDPOINT_CONFIG_FILE = os.getenv("ENDPOINT_CONFIG_FILE", "endpoints_config.log")
 
 
 # ========== REDIS ==========
-async def start_redis(attempts=3):
+async def start_redis(attempts=10):
     try:
         redis_client = aioredis.Redis(
             host=REDIS_HOST,

@@ -10,10 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Lista de orígenes permitidos (agrega los que necesites)
+
+# Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Orígenes permitidos
+    allow_origins=["*"],  # Cambia esto al origen de tu frontend
     allow_credentials=True,
     allow_methods=["*"],  # Métodos permitidos (GET, POST, etc.)
     allow_headers=["*"],  # Headers permitidos
