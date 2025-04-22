@@ -16,8 +16,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Cambia esto al origen de tu frontend
     allow_credentials=True,
-    allow_methods=["*"],  # Métodos permitidos (GET, POST, etc.)
-    allow_headers=["*"],  # Headers permitidos
+    allow_methods=["*"],  # Permitir todos los métodos (GET, POST, etc.)
+    allow_headers=["*"],  # Permitir todos los encabezados
 )
 
 # Crear el modelo para los datos de CronJob
