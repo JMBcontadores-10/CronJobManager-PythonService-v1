@@ -11,6 +11,18 @@
       src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
       defer
     ></script>
+    <style>
+      .job-card {
+        transition: all 0.3s ease;
+      }
+      .job-card:hover {
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      }
+      .status-badge {
+        font-size: 0.8rem;
+        padding: 0.25rem 0.5rem;
+      }
+    </style>
   </head>
 
   <body class="bg-light">
@@ -18,7 +30,7 @@
       <h1 class="mb-4 text-center">🕒 CronManager</h1>
 
       <div class="card mb-4">
-        <div class="card-header">Crear nuevo CronJob</div>
+        <div class="card-header bg-primary text-white">Crear nuevo CronJob</div>
         <div class="card-body">
           <form id="cronForm" class="row g-3">
             <div class="col-md-6">
@@ -64,6 +76,8 @@
                 type="number"
                 class="form-control"
                 id="interval_seconds"
+                min="5"
+                value="60"
                 required
               />
             </div>
@@ -78,13 +92,27 @@
       </div>
 
       <div class="card mb-4">
-        <div class="card-header">Lista de CronJobs</div>
-        <ul id="jobList" class="list-group list-group-flush"></ul>
+        <div class="card-header bg-secondary text-white">Lista de CronJobs</div>
+        <div id="jobsContainer">
+          <ul id="jobList" class="list-group list-group-flush"></ul>
+          <div id="loadingJobs" class="text-center py-3 d-none">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Cargando...</span>
+            </div>
+          </div>
+          <div id="noJobs" class="text-center py-3 d-none">
+            <p class="text-muted">No hay trabajos registrados</p>
+          </div>
+        </div>
       </div>
 
       <div class="card">
-        <div class="card-header">Respuestas</div>
-        <div class="card-body" id="responseContainer"></div>
+        <div class="card-header bg-info text-white">Respuestas</div>
+        <div class="card-body" id="responseContainer">
+          <p class="text-muted text-center">
+            Ejecuta un trabajo para ver su respuesta
+          </p>
+        </div>
       </div>
     </div>
 
@@ -96,138 +124,259 @@
         .addEventListener("submit", async (e) => {
           e.preventDefault();
 
-          const name = document.getElementById("name").value;
-          const ip = document.getElementById("ip").value;
-          const endpoint = document.getElementById("endpoint").value;
-          const method = document.getElementById("method").value;
-          const interval_seconds = parseInt(
-            document.getElementById("interval_seconds").value
-          );
-          const full_url = `${ip}${endpoint}`;
+          const submitBtn = e.target.querySelector('button[type="submit"]');
+          const originalText = submitBtn.innerHTML;
+          submitBtn.disabled = true;
+          submitBtn.innerHTML =
+            '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Creando...';
 
-          const response = await fetch(`${apiURL}/cronjob/`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              name: name,
-              script_path: { url: full_url, method },
-              interval_seconds,
-            }),
-          });
+          try {
+            const name = document.getElementById("name").value;
+            const ip = document.getElementById("ip").value;
+            const endpoint = document.getElementById("endpoint").value;
+            const method = document.getElementById("method").value;
+            const interval_seconds = parseInt(
+              document.getElementById("interval_seconds").value
+            );
+            const full_url = `${ip}${endpoint}`;
 
-          const data = await response.json();
-          alert("Cronjob creado: " + JSON.stringify(data));
-          loadJobs();
+            const response = await fetch(`${apiURL}/cronjob/`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                name: name,
+                script_path: { url: full_url, method },
+                interval_seconds,
+                paused: false, // Aseguramos que el trabajo se cree activo
+              }),
+            });
+
+            if (!response.ok) {
+              throw new Error(`Error HTTP: ${response.status}`);
+            }
+
+            const data = await response.json();
+            showAlert(`Cronjob "${name}" creado correctamente`, "success");
+            document.getElementById("cronForm").reset();
+
+            // Esperamos un momento antes de cargar los trabajos para dar tiempo al backend
+            setTimeout(() => {
+              loadJobs();
+            }, 500);
+          } catch (error) {
+            console.error("Error al crear el cronjob:", error);
+            showAlert(`Error al crear el cronjob: ${error.message}`, "danger");
+          } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+          }
         });
+
+      function showAlert(message, type = "info") {
+        const alertDiv = document.createElement("div");
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.role = "alert";
+        alertDiv.innerHTML = `
+          ${message}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        `;
+
+        // Insertamos la alerta al inicio del contenedor
+        const container = document.querySelector(".container");
+        container.insertBefore(alertDiv, container.firstChild);
+
+        // Eliminamos la alerta después de unos segundos
+        setTimeout(() => {
+          alertDiv.classList.remove("show");
+          setTimeout(() => alertDiv.remove(), 300);
+        }, 3000);
+      }
 
       async function loadJobs() {
         try {
+          const loadingEl = document.getElementById("loadingJobs");
+          const noJobsEl = document.getElementById("noJobs");
+          const jobList = document.getElementById("jobList");
+
+          // Mostrar indicador de carga
+          loadingEl.classList.remove("d-none");
+          noJobsEl.classList.add("d-none");
+          jobList.innerHTML = "";
+
           const response = await fetch(`${apiURL}/cronjob/`);
+
+          if (!response.ok) {
+            throw new Error(`Error HTTP: ${response.status}`);
+          }
+
           const data = await response.json();
 
-          if (Array.isArray(data)) {
-            const jobList = document.getElementById("jobList");
-            jobList.innerHTML = "";
+          // Ocultar indicador de carga
+          loadingEl.classList.add("d-none");
 
+          if (Array.isArray(data) && data.length > 0) {
             data.forEach((job) => {
               const isActive = job.is_active !== false;
 
               const listItem = document.createElement("li");
-              listItem.className = "list-group-item";
+              listItem.className = "list-group-item job-card";
               listItem.innerHTML = `
-                  <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                      <h5 class="mb-1">${job.name}</h5>
-                      <small>Intervalo: ${job.interval_seconds}s</small><br>
-                      <small>URL: ${job.script_path.url}</small><br>
-                      <small>Método: ${job.script_path.method}</small><br>
-                      <span class="badge status-badge bg-${
-                        isActive ? "success" : "secondary"
-                      }" id="status-${job.id}">
-                        ${isActive ? "Activo" : "Pausado"}
-                      </span>
-                    </div>
-                    <div class="btn-group">
-                      <button class="btn btn-sm btn-warning" onclick="toggleJob('${
-                        job.id
-                      }', this)">
-                        ${isActive ? "Pausar" : "Reanudar"}
-                      </button>
-                      <button class="btn btn-sm btn-success" onclick="runNow('${
-                        job.id
-                      }')">Ejecutar</button>
-                      <button class="btn btn-sm btn-danger" onclick="deleteJob('${
-                        job.id
-                      }')">Eliminar</button>
-                    </div>
+                <div class="d-flex justify-content-between align-items-start">
+                  <div>
+                    <h5 class="mb-1">${job.name}</h5>
+                    <small>Intervalo: ${job.interval_seconds}s</small><br>
+                    <small>URL: ${job.script_path.url}</small><br>
+                    <small>Método: ${
+                      job.script_path.method || "GET"
+                    }</small><br>
+                    <span class="badge status-badge bg-${
+                      isActive ? "success" : "secondary"
+                    }" id="status-${job.id}">
+                      ${isActive ? "Activo" : "Pausado"}
+                    </span>
                   </div>
-                `;
+                  <div class="btn-group">
+                    <button class="btn btn-sm btn-warning" onclick="toggleJob('${
+                      job.id
+                    }', this)">
+                      ${isActive ? "Pausar" : "Reanudar"}
+                    </button>
+                    <button class="btn btn-sm btn-success" onclick="runNow('${
+                      job.id
+                    }')">Ejecutar</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteJob('${
+                      job.id
+                    }')">Eliminar</button>
+                  </div>
+                </div>
+              `;
               jobList.appendChild(listItem);
             });
           } else {
-            console.error("La respuesta no es un array válido");
+            noJobsEl.classList.remove("d-none");
           }
         } catch (error) {
           console.error("Error al cargar los cronjobs: ", error);
+          showAlert(
+            "Error al cargar los trabajos. Por favor, intenta de nuevo.",
+            "danger"
+          );
         }
       }
 
       async function runNow(id) {
-        const res = await fetch(`${apiURL}/run/${id}`);
-        const data = await res.json();
-        alert(data.message);
-
-        const responseContainer = document.getElementById("responseContainer");
-
-        if (data.response && data.response !== "No output from the script") {
-          responseContainer.innerHTML = ` 
-            <h5 class="text-success">Respuesta del CronJob:</h5>
-            <p><strong>${data.message}</strong></p>
-            <pre class="bg-dark text-white p-2 rounded">${JSON.stringify(
-              data.response,
-              null,
-              2
-            )}</pre>
+        try {
+          const responseContainer =
+            document.getElementById("responseContainer");
+          responseContainer.innerHTML = `
+            <div class="text-center">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Ejecutando trabajo...</span>
+              </div>
+              <p>Ejecutando trabajo...</p>
+            </div>
           `;
-        } else {
-          responseContainer.innerHTML = ` 
-            <h5 class="text-warning">Respuesta del CronJob:</h5>
-            <p>No se generó salida desde el script ejecutado.</p>
+
+          const res = await fetch(`${apiURL}/run/${id}`);
+
+          if (!res.ok) {
+            throw new Error(`Error HTTP: ${res.status}`);
+          }
+
+          const data = await res.json();
+          showAlert(data.message, "info");
+
+          if (data.response && data.response !== "No output from the script") {
+            responseContainer.innerHTML = ` 
+              <h5 class="text-success">Respuesta del CronJob:</h5>
+              <p><strong>${data.message}</strong></p>
+              <pre class="bg-dark text-white p-2 rounded">${JSON.stringify(
+                data.response,
+                null,
+                2
+              )}</pre>
+            `;
+          } else {
+            responseContainer.innerHTML = ` 
+              <h5 class="text-warning">Respuesta del CronJob:</h5>
+              <p>No se generó salida desde el script ejecutado.</p>
+            `;
+          }
+        } catch (error) {
+          console.error("Error al ejecutar el trabajo:", error);
+          showAlert(`Error al ejecutar el trabajo: ${error.message}`, "danger");
+          document.getElementById("responseContainer").innerHTML = `
+            <div class="alert alert-danger">
+              Error al ejecutar el trabajo: ${error.message}
+            </div>
           `;
         }
       }
 
       async function deleteJob(id) {
-        const res = await fetch(`${apiURL}/cronjob/${id}`, {
-          method: "DELETE",
-        });
-        const data = await res.json();
-        alert(data.message);
-        loadJobs();
+        if (!confirm("¿Estás seguro de que deseas eliminar este trabajo?")) {
+          return;
+        }
+
+        try {
+          const res = await fetch(`${apiURL}/cronjob/${id}`, {
+            method: "DELETE",
+          });
+
+          if (!res.ok) {
+            throw new Error(`Error HTTP: ${res.status}`);
+          }
+
+          const data = await res.json();
+          showAlert(data.message, "success");
+          loadJobs();
+        } catch (error) {
+          console.error("Error al eliminar el trabajo:", error);
+          showAlert(`Error al eliminar el trabajo: ${error.message}`, "danger");
+        }
       }
 
       async function toggleJob(id, button) {
-        const res = await fetch(`${apiURL}/cronjob/${id}/toggle`, {
-          method: "POST",
-        });
-        const data = await res.json();
-        alert(data.message);
+        try {
+          button.disabled = true;
+          const originalText = button.innerText;
+          button.innerHTML =
+            '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
 
-        const currentText = button.innerText;
-        const isNowActive = currentText === "Reanudar";
-        button.innerText = isNowActive ? "Pausar" : "Reanudar";
+          const res = await fetch(`${apiURL}/cronjob/${id}/toggle`, {
+            method: "POST",
+          });
 
-        const badge = document.getElementById(`status-${id}`);
-        badge.innerText = isNowActive ? "Activo" : "Pausado";
-        badge.classList.remove(isNowActive ? "bg-secondary" : "bg-success");
-        badge.classList.add(isNowActive ? "bg-success" : "bg-secondary");
+          if (!res.ok) {
+            throw new Error(`Error HTTP: ${res.status}`);
+          }
 
-        loadJobs();
+          const data = await res.json();
+
+          const isNowActive = originalText === "Reanudar";
+          button.innerText = isNowActive ? "Pausar" : "Reanudar";
+
+          const badge = document.getElementById(`status-${id}`);
+          badge.innerText = isNowActive ? "Activo" : "Pausado";
+          badge.classList.remove(isNowActive ? "bg-secondary" : "bg-success");
+          badge.classList.add(isNowActive ? "bg-success" : "bg-secondary");
+
+          showAlert(data.message, "info");
+        } catch (error) {
+          console.error("Error al cambiar el estado del trabajo:", error);
+          showAlert(`Error al cambiar el estado: ${error.message}`, "danger");
+          button.disabled = false;
+        } finally {
+          button.disabled = false;
+        }
       }
 
-      loadJobs();
+      // Cargamos los trabajos al iniciar la página
+      document.addEventListener("DOMContentLoaded", () => {
+        loadJobs();
+      });
     </script>
   </body>
 </html>

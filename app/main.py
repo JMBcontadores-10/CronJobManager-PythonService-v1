@@ -46,11 +46,6 @@ async def startup_event():
     for job in jobs:
         if 'paused' not in job:
             job['paused'] = False
-        if job['paused']:
-            try:
-                scheduler.scheduler.pause_job(job['id'])  # Intentar pausar el trabajo
-            except JobLookupError:
-                print(f"[CronManager] No se encontró el trabajo con id {job['id']} para pausar.")
         redis_manager.save_cronjob(job['id'], job)  # Guardar el estado actualizado
 
     # Cargar los trabajos al scheduler después de haber verificado que todos estén pausados si es necesario
@@ -98,8 +93,11 @@ def create_cronjob(cronjob: CronJob):
             "paused": cronjob.paused
         }
         redis_manager.save_cronjob(job_id, job)
+        
+        # Aquí está el cambio principal: pasar script_path completo, no solo la URL
         if not cronjob.paused:
-            scheduler.add_cronjob_to_scheduler(job_id, cronjob.script_path["url"], cronjob.interval_seconds)
+            scheduler.add_cronjob_to_scheduler(job_id, cronjob.script_path, cronjob.interval_seconds)
+        
         return job
     except ValueError as e:
         raise HTTPException(status_code=422, detail=f"Error de validación: {str(e)}")
@@ -111,7 +109,11 @@ def run_now(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     
     try:
-        response = scheduler.run_script(job["script_path"]["url"])
+        # Asegúrate de añadir el job_id al script_path antes de ejecutarlo
+        script_path = job["script_path"]
+        script_path["job_id"] = job_id
+        
+        response = scheduler.run_script(script_path)
         if response is None:
             response = {"message": "No output from the script"}
     except Exception as e:
@@ -164,7 +166,6 @@ def resume_job(job_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"No se pudo reanudar el job: {str(e)}")
 
-
 @app.post("/cronjob/{job_id}/toggle")
 def toggle_job(job_id: str):
     try:
@@ -176,7 +177,12 @@ def toggle_job(job_id: str):
         # Verificamos si el job está en el scheduler antes de intentar pausarlo
         existing_job = scheduler.scheduler.get_job(job_id)
         if not existing_job:
-            raise HTTPException(status_code=404, detail=f"Job {job_id} no encontrado en el scheduler")
+            # Si el trabajo no existe en el scheduler pero sí en Redis, lo agregamos
+            if not job["paused"]:
+                scheduler.add_cronjob_to_scheduler(job_id, job["script_path"], job["interval_seconds"])
+                existing_job = scheduler.scheduler.get_job(job_id)
+                if not existing_job:
+                    raise HTTPException(status_code=500, detail=f"No se pudo crear el job {job_id} en el scheduler")
 
         # Alternamos el estado de "paused"
         new_state = not job["paused"]
